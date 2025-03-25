@@ -298,7 +298,7 @@ class AppController:
         """Update the status display."""
         self.main_window.update_status(message)
         if not log_message:
-            self.logger.info("Staus update:" + message)
+            self.logger.info("Status update:" + message)
         else:
             self.logger.info(log_message)
 
