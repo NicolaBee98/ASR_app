@@ -17,7 +17,7 @@ UI_CONFIG = {
 
 # Audio Configuration
 AUDIO_CONFIG = {
-    "chunk_size": 1024,
+    "recording_chunk_size": 0.5,  # recording chunk
     "format": 16,  # Corresponds to pyaudio.paInt16
     "channels": 1,
     "rate": 16000,
@@ -25,14 +25,14 @@ AUDIO_CONFIG = {
 
 # File Paths
 DEFAULT_RECORDING_PATH = "recording.wav"
-LOG_FILE_PATH = "test.log"
+LOG_FILE_PATH = {"ASR_app": "test.log", "whisper_streaming": "whisper_streaming.log"}
 
 # ASR Configuration that has to be passed to whisper_online.asr_factory
 ASR_CONFIG = {
     "start_at": 0,
     "offline": False,
     "comp_unaware": False,
-    "min_chunk_size": 5.0,
+    "min_chunk_size": 5.0,  # Seconds of the chunk
     "model": "large-v2",
     "model_cache_dir": None,
     "model_dir": None,

@@ -3,7 +3,7 @@
 import threading
 import time
 import numpy as np
-from whisper_streaming.whisper_online import set_logging, asr_factory
+from whisper_streaming.whisper_online import asr_factory
 from utils.logging_setup import logger
 from utils.config import ASR_CONFIG, ASRArgs, LOG_FILE_PATH
 
@@ -62,7 +62,7 @@ class TranscriptionService:
         """
         try:
             # Create a logfile for ASR
-            logfile = open(LOG_FILE_PATH, "a", buffering=1)
+            logfile = open(LOG_FILE_PATH["whisper_streaming"], "a", buffering=1)
 
             # Initialize ASR
             asr, online = asr_factory(self.args, logfile=logfile)

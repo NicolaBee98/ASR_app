@@ -9,7 +9,7 @@ import tempfile
 import numpy as np
 import queue
 from utils.logging_setup import logger
-from utils.config import AUDIO_CONFIG, ASR_CONFIG
+from utils.config import AUDIO_CONFIG
 from models.app_state import AppState
 
 
@@ -35,7 +35,7 @@ class AudioProcessor:
         self.format = AUDIO_CONFIG["format"]
         self.channels = AUDIO_CONFIG["channels"]
         self.rate = AUDIO_CONFIG["rate"]
-        self.chunk = int(ASR_CONFIG["min_chunk_size"] * self.rate)
+        self.recording_chunk = int(AUDIO_CONFIG["recording_chunk_size"] * self.rate)
 
         # Initialize PyAudio
         self.audio = pyaudio.PyAudio()
@@ -134,7 +134,7 @@ class AudioProcessor:
                 channels=self.channels,
                 rate=self.rate,
                 input=True,
-                frames_per_buffer=self.chunk,
+                frames_per_buffer=self.recording_chunk,
             )
 
             # Record until stopped
@@ -158,7 +158,7 @@ class AudioProcessor:
     def _record_frame(self):
         """Helper function to record a frame and update queue/performance monitor."""
         # Only record when not paused
-        data = self.stream.read(self.chunk, exception_on_overflow=False)
+        data = self.stream.read(self.recording_chunk, exception_on_overflow=False)
         self.frames.append(data)
 
         try:
@@ -246,12 +246,11 @@ class AudioProcessor:
             )
 
             # Read and play chunks
-            chunk_size = 1024
-            data = wf.readframes(chunk_size)
+            data = wf.readframes(self.recording_chunk)
 
             while data and self.state_manager.is_playing():
                 stream.write(data)
-                data = wf.readframes(chunk_size)
+                data = wf.readframes(self.recording_chunk)
 
             # Clean up
             stream.stop_stream()

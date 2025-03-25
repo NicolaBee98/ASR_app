@@ -7,14 +7,25 @@ import sys
 from .config import LOG_FILE_PATH, ASR_CONFIG
 
 
-def setup_logging():
+def setup_logging(logger_name="ASR_app"):
     """Initialize and configure the application logger."""
+
+    log_file = LOG_FILE_PATH[logger_name]
+
     # Create logger
     log_level = ASR_CONFIG["log_level"].upper()
-    logger = logging.getLogger("audio_recorder")
+    logger = logging.getLogger(logger_name)
     logger.setLevel(log_level)
-    # Create file handler
-    file_handler = logging.FileHandler(LOG_FILE_PATH, mode="w")
+
+    # Prevent logs from being duplicated in other loggers
+    logger.propagate = False
+
+    # Remove existing handlers (to prevent duplicate logs)
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    # Create file handlers
+    file_handler = logging.FileHandler(log_file, mode="w")
     file_handler.setLevel(logging.DEBUG if log_level == "DEBUG" else logging.INFO)
 
     # Create console handler
@@ -38,7 +49,7 @@ def setup_logging():
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
 
-    logger.info("Logging initialized. Logging to %s", LOG_FILE_PATH)
+    logger.info("Logging initialized. Logging to %s", LOG_FILE_PATH[logger_name])
 
     return logger
 
