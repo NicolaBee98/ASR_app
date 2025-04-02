@@ -32,12 +32,23 @@ class AudioProcessor:
         self.performance_monitor = performance_monitor
 
         # Audio parameters from config
-        self.format = AUDIO_CONFIG["format"]
+        self.format = (
+            pyaudio.paInt16 if AUDIO_CONFIG["format"] == 16 else AUDIO_CONFIG["format"]
+        )
         self.channels = AUDIO_CONFIG["channels"]
         self.rate = AUDIO_CONFIG["rate"]
-        self.recording_chunk = int(AUDIO_CONFIG["recording_chunk_size"] * self.rate)
+        self.recording_chunk = (
+            1024  # int(AUDIO_CONFIG["recording_chunk_size"] * self.rate)
+        )
 
         # Initialize PyAudio
+        # p = pyaudio.PyAudio()
+        # for i in range(p.get_device_count()):
+        #    dev = p.get_device_info_by_index(i)
+        #    logger.warning(
+        #        f"Device {i}: {dev['name']} (Input: {dev['maxInputChannels']})"
+        #    )
+        # p.terminate()
         self.audio = pyaudio.PyAudio()
         self.stream = None
 
@@ -47,10 +58,15 @@ class AudioProcessor:
 
         # Thread management
         self.record_thread = None
-        self.audio_queue = queue.Queue()
+        self.audio_queue = None  # queue.Queue()
+        # self.volume_queue = queue.Queue(maxsize=10)  # Queue for volume updates
         self.stop_event = threading.Event()
 
         logger.debug("AudioProcessor initialized")
+        logger.debug(f"Recording format: {self.format}")
+        logger.debug(f"Recording channels: {self.channels}")
+        logger.debug(f"Recording chunk size: {self.recording_chunk}")
+        logger.debug(f"Recording rate: {self.rate}")
 
     def start_recording(self, input_queue):
         """Start audio recording."""
@@ -59,6 +75,7 @@ class AudioProcessor:
 
         # Clear previous recording data
         self.frames = []
+        self.stop_event.clear()
         self.audio_queue = input_queue
         self.start_time = time.time()
 
@@ -67,34 +84,37 @@ class AudioProcessor:
         self.record_thread.daemon = True
         self.record_thread.start()
 
-        logger.info("Recording started")
+        logger.info("Recording started (audio_processor)")
         return True
 
     def stop_recording(self):
         """Stop audio recording and clean up resources."""
-        if self.state_manager.is_recording():
-            self.state_manager.set_state(AppState.IDLE)
+        if not self.state_manager.is_recording():
+            logger.warning("Cannot stop, recording is not active")
+            return False
 
-            # Signal thread to stop
-            self.stop_event.set()
+        self.state_manager.set_state(AppState.IDLE)
 
-            # Wait for recording thread to finish (with timeout)
-            if self.record_thread and self.record_thread.is_alive():
-                self.record_thread.join(timeout=1.0)
-                if self.record_thread.is_alive():
-                    logger.warning("Recording thread did not terminate properly")
+        # Signal thread to stop
+        # self.stop_event.set()
 
-            # Ensure cleanup in case of errors
-            if self.stream:
-                self.stream.stop_stream()
-                self.stream.close()
-                self.stream = None
+        # Wait for recording thread to finish (with timeout)
+        if self.record_thread and self.record_thread.is_alive():
+            self.record_thread.join(timeout=1.0)
+            if self.record_thread.is_alive():
+                logger.warning("Recording thread did not terminate properly")
 
-            logger.info("Recording stopped")
-            return True
+        # Ensure cleanup in case of errors
+        if self.stream:
+            logger.debug(
+                f"Stopping audio stream while in state {self.state_manager.current_state}"
+            )
+            self.stream.stop_stream()
+            self.stream.close()
+            self.stream = None
 
-        logger.warning("Cannot stop, recording is not active")
-        return False
+        logger.info("Recording stopped")
+        return True
 
     def toggle_pause(self):
         """Toggle recording pause state."""
@@ -136,11 +156,19 @@ class AudioProcessor:
                 input=True,
                 frames_per_buffer=self.recording_chunk,
             )
-
+            logger.debug(
+                f"Audio stream opened in state {self.state_manager.current_state}"
+            )
             # Record until stopped
             while not self.stop_event.is_set() and self.state_manager.is_recording():
                 if self.state_manager.current_state == AppState.RECORDING:
-                    self._record_frame()
+                    self._r_ecord_frame()
+                    # data = self.stream.read(
+                    #     self.recording_chunk, exception_on_overflow=False
+                    # )
+                    # self.frames.append(data)
+                    # self.audio_queue.put(data)
+                    # logger.debug(f"Frame {len(self.frames)} added to audio queue")
                 else:
                     # Reduce CPU usage while paused
                     time.sleep(0.1)
@@ -151,24 +179,44 @@ class AudioProcessor:
         finally:
             # Clean up
             if hasattr(self, "stream") and self.stream:
+                logger.debug(
+                    f"Closing audio stream while in state {self.state_manager.current_state}"
+                )
                 self.stream.stop_stream()
                 self.stream.close()
                 self.stream = None
 
-    def _record_frame(self):
+    def _r_ecord_frame(self):
+        data = self.stream.read(self.recording_chunk, exception_on_overflow=False)
+        self.frames.append(data)
+        self.audio_queue.put(data)
+        logger.debug(f"Frame {len(self.frames)} added to audio queue")
+
+    def _record_frame(self, volume_callback=None):
         """Helper function to record a frame and update queue/performance monitor."""
         # Only record when not paused
         data = self.stream.read(self.recording_chunk, exception_on_overflow=False)
+        # logger.debug(f"Recorded {len(data)} bytes")
         self.frames.append(data)
-
+        i = len(self.frames)
         try:
             self.audio_queue.put_nowait(data)
+            logger.debug(f"Frame {i} added to audio queue")
         except queue.Full:
             logger.warning("Audio queue is full. Dropping frame.")
 
-        # Update performance monitor
-        if self.performance_monitor:
-            self.performance_monitor.record_frame_processed()
+        # # Update performance monitor
+        # if self.performance_monitor:
+        #     self.performance_monitor.record_frame_processed()
+
+        # # Calculate volume and send to volume queue
+        # audio_array = np.frombuffer(data, dtype=np.int16)
+        # volume = self.calculate_volume_in_decibels(audio_array)
+        # try:
+        #     logger.debug(f"Volume: {volume}")
+        #     self.volume_queue.put_nowait(volume)
+        # except queue.Full:
+        #     pass  # Drop old volume data if queue is full to keep it responsive
 
     def get_next_audio_chunk(self, timeout=0.5):
         """
@@ -433,6 +481,8 @@ class AudioProcessor:
             self.events.emit("error", "No audio to save.")
             return False
 
+        self.plot_data()
+
         try:
             # Save the audio to a WAV file
             with wave.open(file_path, "wb") as wf:
@@ -440,7 +490,6 @@ class AudioProcessor:
                 wf.setsampwidth(self.audio.get_sample_size(self.format))
                 wf.setframerate(self.rate)
                 wf.writeframes(b"".join(self.frames))
-
             self.events.emit("update_status", f"Recording saved to {file_path}")
             return True
 
@@ -470,3 +519,57 @@ class AudioProcessor:
             self.state_manager.set_state(AppState.PLAYING)
             return True
         return False
+
+    def calculate_volume_in_decibels(self, audio_array):
+        """Compute volume in decibels (dBFS)."""
+        if np.issubdtype(audio_array.dtype, np.integer):
+            # Assuming 16-bit PCM audio
+            max_value = 32768.0  # 16-bit signed PCM full scale
+        else:
+            # Assuming float audio in range [-1, 1]
+            max_value = 1.0
+
+        rms = np.sqrt(np.mean(audio_array.astype(np.float64) ** 2))  # Compute RMS
+        if rms == 0:
+            return -np.inf  # Silence should be -∞ dBFS
+
+        return 20 * np.log10(rms / max_value)  # Normalize to full scalers
+
+    def get_volume_level(self):
+        """Fetch the latest volume level for UI updates."""
+        try:
+            logger.debug(f"Fetching volume level {self.volume_queue.get_nowait()}")
+            return self.volume_queue.get_nowait()
+        except queue.Empty:
+            return None
+
+    def plot_data(self):
+        """For debugging and development purposes only"""
+        import matplotlib.pyplot as plt
+
+        logger.info("Plotting audio data")
+
+        audio_data = b"".join(self.frames)
+        audio_samples = np.frombuffer(audio_data, dtype=np.int16)
+        time_axis = np.linspace(
+            0, len(audio_samples) / self.rate, num=len(audio_samples)
+        )
+
+        # Plot waveform
+        plt.figure(figsize=(12, 4))
+        plt.plot(time_axis, audio_samples, label="Audio Waveform", alpha=0.7)
+        plt.xlabel("Time (seconds)")
+        plt.ylabel("Amplitude")
+        plt.title("Recorded Audio Waveform")
+        plt.legend()
+        plt.grid()
+        plt.show()
+
+        # Plot spectrogram
+        plt.figure(figsize=(12, 4))
+        plt.specgram(audio_samples, Fs=self.rate)
+        plt.xlabel("Time (seconds)")
+        plt.ylabel("Frequency (Hz)")
+        plt.title("Spectrogram")
+        plt.colorbar()
+        plt.show()

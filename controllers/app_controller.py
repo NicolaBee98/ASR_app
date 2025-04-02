@@ -57,9 +57,9 @@ class AppController:
 
         # Start processing thread - TODO FIX The function before the threading
 
-        self.process_thread = threading.Thread(target=self.process_audio)
-        self.process_thread.daemon = True
-        self.process_thread.start()
+        # self.process_thread = threading.Thread(target=self.process_audio)
+        # self.process_thread.daemon = True
+        # self.process_thread.start()
 
     def stop_recording(self):
         """Stop the recording process"""
@@ -101,6 +101,7 @@ class AppController:
             success = self.audio_processor.save_recording(file_path)
             if success:
                 self.events.emit("update_status", f"Recording saved to: {file_path}")
+                self.main_window.show_success_message(f"Recording saved to {file_path}")
             else:
                 self.events.emit("error", "Failed to save recording")
         except Exception as e:
@@ -358,3 +359,6 @@ class AppController:
 
     def _get_state(self):
         return self.audio_processor.state_manager.get_state()
+
+    def get_volume(self):
+        return self.audio_processor.get_volume_level()

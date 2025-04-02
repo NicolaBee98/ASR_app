@@ -1,4 +1,5 @@
 import customtkinter as ctk
+from tkinter import messagebox
 from views.recording_panel import RecordingPanel
 from views.transcript_panel import TranscriptPanel
 from utils.config import UI_CONFIG
@@ -16,8 +17,8 @@ class MainWindow:
         """
         # self.controller = AppController(self, audio_processor, transcription_service)
         self.root = root
-        self.root.title("Audio Recorder")
-        self.root.geometry("800x800")
+        self.root.title("Automatic Speech Recognition App")
+        self.root.geometry("800x1000")
         self.root.resizable(True, True)
 
         # Configure UI appearance
@@ -120,3 +121,8 @@ class MainWindow:
             defaultextension=".wav",
             filetypes=[("Audio files", "*.wav"), ("All files", "*.*")],
         )
+
+    def show_success_message(self, message):
+        """Show a success message"""
+        logger.debug("Showing success message")
+        messagebox.showinfo("Success", message)

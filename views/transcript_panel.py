@@ -29,6 +29,9 @@ class TranscriptPanel:
         # Create performance monitor
         self._create_performance_monitor(bottom_frame)
 
+        # Create volume meter
+        self._create_volume_meter(bottom_frame)
+
         self.logger.debug("Transcript panel initialized")
 
     def _create_status_section(self, parent):
@@ -105,6 +108,39 @@ class TranscriptPanel:
             row=1, column=0, columnspan=2, padx=10, pady=5, sticky="nsew"
         )
 
+    def _create_volume_meter(self, parent):
+        """Create the volume meter section."""
+        volume_frame = ctk.CTkFrame(parent, fg_color="#d9d9d9", corner_radius=4)
+        volume_frame.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=5, pady=5)
+        volume_frame.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            volume_frame,
+            text="Volume",
+            font=ctk.CTkFont(family="Arial", size=14, weight="bold"),
+        ).grid(row=0, column=0, padx=5, pady=5)
+
+        # Volume level label
+        self.volume_level_label = ctk.CTkLabel(
+            volume_frame,
+            text="0.0 dB",
+            font=ctk.CTkFont(family="Courier", size=10),
+            width=60,
+        )
+        self.volume_level_label.grid(row=1, column=0, padx=(10, 5), pady=5)
+
+        # Volume progress bar
+        self.volume_progress = ctk.CTkProgressBar(
+            volume_frame,
+            orientation="horizontal",
+            width=300,
+            height=20,
+            fg_color="#E0E0E0",
+            progress_color="#4CAF50",  # Green color indicating volume level
+        )
+        self.volume_progress.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
+        self.volume_progress.set(0)  # Initial value at 0
+
     def update_status(self, message):
         """Update the status display.
 
@@ -164,3 +200,29 @@ class TranscriptPanel:
         # Update display
         self.perf_text.delete("0.0", "end")
         self.perf_text.insert("0.0", perf_info)
+
+    def update_volume_meter(self, volume_level):
+        """Update the volume meter display.
+
+        Args:
+            volume_level (float): Current volume level in decibels
+        """
+        # Normalize volume level for progress bar (assuming typical range of -60 to 0 dB)
+        normalized_volume = max(0, min(1, (volume_level + 60) / 60))
+
+        # Update progress bar
+        self.volume_progress.set(normalized_volume)
+
+        # Update volume level label
+        self.volume_level_label.configure(text=f"{volume_level:.1f} dB")
+
+    def update_ui(self):
+        """Fetch and update the volume bar."""
+        logger.debug("Updating UI")
+        volume = self.controller.get_volume()
+        if volume is not None:
+            normalized_volume = min(
+                max((volume + 60) / 60, 0), 1
+            )  # Normalize dBFS (-60 dB to 0 dB) to [0,1]
+            self.volume_progress.set(normalized_volume)
+        self.after(100, self.update_ui)  # Repeat every 100ms

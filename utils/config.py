@@ -25,7 +25,10 @@ AUDIO_CONFIG = {
 
 # File Paths
 DEFAULT_RECORDING_PATH = "recording.wav"
-LOG_FILE_PATH = {"ASR_app": "test.log", "whisper_streaming": "whisper_streaming.log"}
+LOG_FILE_PATH = {
+    "ASR_app": "/home/nicola/Opportunity/ASR_app/test.log",
+    "whisper_streaming": "/home/nicola/Opportunity/ASR_app/whisper_streaming.log",
+}
 
 # ASR Configuration that has to be passed to whisper_online.asr_factory
 ASR_CONFIG = {
