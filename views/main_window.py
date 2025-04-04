@@ -110,7 +110,14 @@ class MainWindow:
         """
         self.recording_panel.update_for_state(state)
 
-    def show_open_dialog(self, title, filetypes):
+    def show_open_dialog(
+        self,
+        title="Select Audio File",
+        filetypes=[
+            ("Audio Files", ("*.wav", "*.mp3", "*.m4a")),
+            ("All files", "*.*"),
+        ],
+    ):
         """Show a file open dialog and return the selected path"""
         return ctk.filedialog.askopenfilename(title=title, filetypes=filetypes)
 
@@ -126,3 +133,7 @@ class MainWindow:
         """Show a success message"""
         logger.debug("Showing success message")
         messagebox.showinfo("Success", message)
+
+    def run_on_ui_thread(self, func, *args, **kwargs):
+        """Run a function on the UI thread"""
+        self.root.after(0, func, *args, **kwargs)

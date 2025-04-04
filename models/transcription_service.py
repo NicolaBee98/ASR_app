@@ -3,6 +3,7 @@
 import threading
 import time
 import numpy as np
+import queue
 from whisper_streaming.whisper_online import asr_factory
 from utils.logging_setup import logger
 from utils.config import ASR_CONFIG, ASRArgs, LOG_FILE_PATH
@@ -11,18 +12,16 @@ from utils.config import ASR_CONFIG, ASRArgs, LOG_FILE_PATH
 class TranscriptionService:
     """Manages transcription using ASR services."""
 
-    def __init__(
-        self, performance_monitor=None, transcript_callback=None, status_callback=None
-    ):
+    def __init__(self, performance_monitor=None, events=None, status_callback=None):
         """
         Initialize the transcription service.
 
         Args:
             performance_monitor: Performance monitoring instance
-            transcript_callback: Callback for transcript updates
+            events: Callback for transcript updates
         """
         self.performance_monitor = performance_monitor
-        self.transcript_callback = transcript_callback
+        self.events = events
         self.status_callback = status_callback or (lambda *args, **kwargs: None)
         self.processing_thread = None
         self.processing = False
@@ -55,7 +54,7 @@ class TranscriptionService:
 
     def _initialize_asr(self):
         """
-        Initialize the ASR engine.
+        Initialize the ASR engine with whisper_online package
 
         Returns:
             Tuple of (asr, online) objects
@@ -97,7 +96,7 @@ class TranscriptionService:
             logger.error(f"Error changing ASR language: {str(e)}")
             return False
 
-    def start_processing(self, audio_processor):
+    def start_processing(self, audio_processor):  # NOT USED
         """
         Start processing audio for transcription.
 
@@ -123,7 +122,7 @@ class TranscriptionService:
         logger.info("Transcription processing started")
         return True
 
-    def stop_processing(self):
+    def stop_processing(self):  # NOT USED
         """Stop audio processing."""
         if not self.processing:
             return False
@@ -137,7 +136,7 @@ class TranscriptionService:
         logger.info("Transcription processing stopped")
         return True
 
-    def _process_audio_thread(self, audio_processor):
+    def _process_audio_thread(self, audio_processor):  # NOT USED
         """
         Background thread for processing audio.
 
@@ -170,9 +169,9 @@ class TranscriptionService:
                         self.performance_monitor.record_api_call(processing_time)
 
                     # If we have a transcript, send it to callback
-                    if result[0] is not None and self.transcript_callback:
+                    if result[0] is not None and self.events:
                         transcript = result[2]
-                        self.transcript_callback(transcript)
+                        self.events(transcript)
 
                         if self.performance_monitor:
                             self.performance_monitor.record_ui_update()
@@ -210,19 +209,57 @@ class TranscriptionService:
 
             return result
         except Exception as e:
-            logger.error(f"Error processing audio chunk: {str(e)}")
+            self.events.emit("error", f"Processing error: {str(e)}")
+            # logger.error(f"Error processing audio chunk: {str(e)}")
             return None
 
-    # TODO: Implement file processing for full transcription
-    def process_file(self, file_path, progress_callback=None):
-        """
-        Process an entire audio file for transcription.
+    def _transcription_thread(self, audio_processor):
+        # TODO: implement this
 
-        Args:
-            file_path: Path to the audio file
-            progress_callback: Callback for progress updates
+        while audio_processor.state_manager.is_recording():
+            try:
+                data = audio_processor.audio_queue.get(timeout=0.5)
 
-        Returns:
-            str: Full transcript
-        """
-        pass
+                # Process audio with transcription service
+                result = self.process_audio_chunk(data)
+
+                if result and result[0] is not None:
+                    transcript = result[2]
+                    self.events.emit("update_transcription", transcript)
+                logger.debug("Something was sent to API")
+
+            except queue.Empty:
+                pass
+            except Exception as e:
+                error_message = str(e)
+                self.events.emit("error", f"Processing error: {error_message}")
+
+    def start_transcription(self, audio_processor):
+        if not audio_processor.state_manager.is_recording():
+            return False
+
+        # Start recording thread
+        self.transcription_thread = threading.Thread(
+            target=self._transcription_thread, args=(audio_processor,)
+        )
+        self.transcription_thread.daemon = True
+        self.transcription_thread.start()
+
+    # def start_recording(self, input_queue):
+    #     """Start audio recording."""
+    #     if not self.state_manager.set_state(AppState.RECORDING):
+    #         return False
+
+    #     # Clear previous recording data
+    #     self.frames = []
+    #     self.stop_event.clear()
+    #     self.audio_queue = input_queue
+    #     self.start_time = time.time()
+
+    #     # Start recording thread
+    #     self.record_thread = threading.Thread(target=self._record_audio_thread)
+    #     self.record_thread.daemon = True
+    #     self.record_thread.start()
+
+    #     logger.info("Recording started (audio_processor)")
+    #     return True

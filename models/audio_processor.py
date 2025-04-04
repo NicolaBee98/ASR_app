@@ -162,13 +162,7 @@ class AudioProcessor:
             # Record until stopped
             while not self.stop_event.is_set() and self.state_manager.is_recording():
                 if self.state_manager.current_state == AppState.RECORDING:
-                    self._r_ecord_frame()
-                    # data = self.stream.read(
-                    #     self.recording_chunk, exception_on_overflow=False
-                    # )
-                    # self.frames.append(data)
-                    # self.audio_queue.put(data)
-                    # logger.debug(f"Frame {len(self.frames)} added to audio queue")
+                    self._record_frame()
                 else:
                     # Reduce CPU usage while paused
                     time.sleep(0.1)
@@ -186,22 +180,12 @@ class AudioProcessor:
                 self.stream.close()
                 self.stream = None
 
-    def _r_ecord_frame(self):
-        data = self.stream.read(self.recording_chunk, exception_on_overflow=False)
-        self.frames.append(data)
-        self.audio_queue.put(data)
-        logger.debug(f"Frame {len(self.frames)} added to audio queue")
-
     def _record_frame(self, volume_callback=None):
         """Helper function to record a frame and update queue/performance monitor."""
-        # Only record when not paused
         data = self.stream.read(self.recording_chunk, exception_on_overflow=False)
-        # logger.debug(f"Recorded {len(data)} bytes")
         self.frames.append(data)
-        i = len(self.frames)
         try:
-            self.audio_queue.put_nowait(data)
-            logger.debug(f"Frame {i} added to audio queue")
+            self.audio_queue.put(data)
         except queue.Full:
             logger.warning("Audio queue is full. Dropping frame.")
 
@@ -282,6 +266,9 @@ class AudioProcessor:
             on_complete: Callback to call when playback completes
         """
         try:
+            # Convert file to WAV if needed
+            file_path = self._audio_consistency_check(file_path)
+
             # Open the WAV file
             wf = wave.open(file_path, "rb")
 
@@ -391,7 +378,7 @@ class AudioProcessor:
             self.events.emit("error", f"Error in audio processing: {str(e)}")
             raise e
 
-    def simulate_audio_stream(self, file_path, transcription_service):
+    def _simulate_audio_thread(self, file_path, transcription_service):
         """
         Simulate real-time audio streaming from a file.
 
@@ -403,10 +390,6 @@ class AudioProcessor:
         try:
             # Load and preprocess audio file
             file_path = self._audio_consistency_check(file_path)
-
-            # Set simulation state
-            if not self.state_manager.is_simulating():
-                self.state_manager.prepare_simulation()
 
             # Open the WAV file for streaming
             wf = wave.open(file_path, "rb")
@@ -456,15 +439,33 @@ class AudioProcessor:
             # Reset simulation state
             if self.state_manager.is_simulating():
                 self.state_manager.set_state(AppState.IDLE)
+
+            self.events.emit("simulation_ended")
+
             if wf:
                 wf.close()
+            if (
+                hasattr(self, "_simulate_audio_thread")
+                and self.simulate_audio_thread.is_alive()
+                and self.simulate_audio_thread is not threading.current_thread()
+            ):
+                self.simulate_audio_thread.join(timeout=0.5)
 
-    def activate_simulation(self):
+    def start_simulation(self, file_path, transcription_service):
         """Prepare for audio simulation. Set state to simulating for updating UI"""
-        logger.debug("Preparing audio simulation (function called)")
+        logger.debug("Starting audio simulation")
         if not self.state_manager.is_simulating():
             self.state_manager.set_state(AppState.SIMULATING)
-            return True
+
+            # Start simulation in a thread
+            self.simulate_audio_thread = threading.Thread(
+                target=self._simulate_audio_thread,
+                args=(file_path, transcription_service),
+                daemon=True,
+            )
+            self.simulate_audio_thread.start()
+        else:
+            logger.debug("Audio simulation is already running")
 
     def stop_simulation(self):
         """Stop audio simulation."""
@@ -566,10 +567,10 @@ class AudioProcessor:
         plt.show()
 
         # Plot spectrogram
-        plt.figure(figsize=(12, 4))
-        plt.specgram(audio_samples, Fs=self.rate)
-        plt.xlabel("Time (seconds)")
-        plt.ylabel("Frequency (Hz)")
-        plt.title("Spectrogram")
-        plt.colorbar()
-        plt.show()
+        # plt.figure(figsize=(12, 4))
+        # plt.specgram(audio_samples, Fs=self.rate)
+        # plt.xlabel("Time (seconds)")
+        # plt.ylabel("Frequency (Hz)")
+        # plt.title("Spectrogram")
+        # plt.colorbar()
+        # plt.show()

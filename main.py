@@ -37,7 +37,7 @@ def main():
     events = EventEmitter()
     state_manager = StateManager()
     audio_processor = AudioProcessor(state_manager, events=events)
-    transcription_service = TranscriptionService()
+    transcription_service = TranscriptionService(events=events)
 
     # Create UI
     main_window = MainWindow(root)  # audio_processor, transcription_service)

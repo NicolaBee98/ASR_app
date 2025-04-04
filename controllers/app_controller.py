@@ -30,6 +30,7 @@ class AppController:
         self.events.on("update_status", self.on_update_status)
         self.events.on("error", self.on_error)
         self.events.on("update_transcription", self.on_update_transcription)
+        self.events.on("simulation_ended", self.on_simulation_ended)
 
         # Connect UI events to controller methods
         # self._connect_signals()
@@ -47,7 +48,7 @@ class AppController:
         self.logger.info("Starting recording")
         self.main_window.update_status("Recording started...")
 
-        # Setup audio processor
+        # Start recording audio
         self.audio_processor.start_recording(self.audio_queue)
 
         # Update UI
@@ -55,7 +56,9 @@ class AppController:
             self.audio_processor.get_state()
         )
 
-        # Start processing thread - TODO FIX The function before the threading
+        # Start transcribing audio
+        # TODO: end implementation
+        self.transcription_service.start_transcription(self.audio_processor)
 
         # self.process_thread = threading.Thread(target=self.process_audio)
         # self.process_thread.daemon = True
@@ -112,7 +115,7 @@ class AppController:
                 f"Error saving recording (save_recording_controller_function): {error_message}",
             )
 
-    def process_audio(self):
+        # def process_audio(self):
         """Process audio chunks from the queue and update transcription"""
         while self.audio_processor.state_manager.is_recording():
             try:
@@ -136,32 +139,20 @@ class AppController:
         """Simulate recording from a file"""
         if not self.audio_processor.state_manager.is_simulating():
             # Get file path from UI
-            file_path = self.main_window.show_open_dialog(
-                title="Select Audio File",
-                filetypes=[
-                    ("Audio Files", ("*.wav", "*.mp3", "*.m4a")),
-                    ("All files", "*.*"),
-                ],
-            )
+            file_path = self.main_window.show_open_dialog()
 
             if file_path:
                 self.main_window.update_status(
                     f"Simulating recording with file: {file_path}"
                 )
 
-                self.audio_processor.activate_simulation()
+                self.audio_processor.start_simulation(
+                    file_path, self.transcription_service
+                )
                 # Update UI
                 self.main_window.recording_panel.update_for_state(
                     self.audio_processor.get_state()
                 )
-
-                # Start simulation in a thread
-                self.simulate_thread = threading.Thread(
-                    target=self.run_simulation, args=(file_path,), daemon=True
-                )
-
-                # self.simulate_thread.daemon = True
-                self.simulate_thread.start()
 
         else:
             # Stop simulation
@@ -170,26 +161,17 @@ class AppController:
                 self.audio_processor.get_state()
             )
 
-            # Wait for simulation thread to finish
-            if hasattr(self, "simulate_thread") and self.simulate_thread.is_alive():
-                self.simulate_thread.join(timeout=0.5)
-
+    # TODO: Refine it and move what is needed to the audio_processor
     def toggle_play_audio(self):
         """Play audio from a file"""
         if not self.audio_processor.state_manager.is_playing():
             # Get file path from UI
-            file_path = self.main_window.show_open_dialog(
-                title="Select Audio File",
-                filetypes=[
-                    ("Audio Files", ("*.wav", "*.mp3", "*.m4a")),
-                    ("All files", "*.*"),
-                ],
-            )
+            file_path = self.main_window.show_open_dialog()
 
             if not file_path:
                 return
 
-            self.audio_processor.activate_playback()
+            self.audio_processor.activate_playback()  # Set state to playing
             self.stopped = False
 
             # Update UI
@@ -197,12 +179,12 @@ class AppController:
                 self.audio_processor.get_state()
             )
 
-            # Start playback in a thread
-            self.play_thread = threading.Thread(
-                target=self.run_playback, args=(file_path,)
+            self.events.emit("update_status", f"Playing audio from {file_path}")
+
+            self.audio_processor.play_audio_file(
+                file_path, on_complete=lambda: self.on_playback_complete(file_path)
             )
-            self.play_thread.daemon = True
-            self.play_thread.start()
+
         else:
             # Stop playback
             self.stopped = self.audio_processor.stop_playback()
@@ -210,63 +192,24 @@ class AppController:
                 self.audio_processor.get_state()
             )
 
-    def run_simulation(self, file_path):
-        """Run the simulation process"""
-        try:
-            self.audio_processor.simulate_audio_stream(
-                file_path, self.transcription_service
-            )
+    def on_playback_complete(self, file_path):
+        """Callback to handle when playback finishes"""
 
-        except Exception as e:
-            error_message = str(e)
-            self.main_window.update_status(f"Error in simulation: {error_message}")
-            self.logger.error(f"Error in simulation: {error_message}")
-
-        finally:
-            self.main_window.recording_panel.update_for_state(
-                self.audio_processor.get_state()
-            )
-            # Reset UI if not already reset
-            if self.audio_processor.state_manager.is_simulating():
-                self.audio_processor.stop_simulation()
-
-    def run_playback(self, file_path):
-        """Run the audio playback process"""
-        try:
-            self.main_window.update_status(f"Playing audio from {file_path}")
-
-            success = self.audio_processor.play_audio_file(file_path)
-
-            if not success:
-                self.main_window.update_status("Could not start playback")
-                self.main_window.recording_panel.update_for_state(
-                    self.audio_processor.get_state()
-                )
-                return
-
-            # Wait for playback to complete or be stopped
-            while self.audio_processor.state_manager.is_playing():
-                time.sleep(0.1)
-
-            # Update status when complete
+        def update_ui():
             if self.stopped:
-                logger.debug(f"CALLED STOPPED {self.stopped}")
-                self.main_window.update_status("Playback stopped")
+                self.events.emit("update_status", "Playback stopped")
             else:
-                self.main_window.update_status(
-                    f"Finished playing audio from {file_path}"
+                self.events.emit(
+                    "update_status", f"Finished playing audio from {file_path}"
                 )
+                # self.main_window.update_status(f"Finished playing audio from {file_path}")
+
             self.main_window.recording_panel.update_for_state(
                 self.audio_processor.get_state()
             )
 
-        except Exception as e:
-            error_message = str(e)
-            self.main_window.update_status(f"Error playing audio: {error_message}")
-            self.logger.error(f"Error playing audio: {error_message}")
-            self.main_window.recording_panel.update_for_state(
-                self.audio_processor.get_state()
-            )
+        # Use a thread-safe way to update the UI (depends on framework: tkinter, Qt, etc.)
+        self.main_window.run_on_ui_thread(update_ui)
 
     def change_language(self, language_code, language_name):
         """Change the transcription language"""
@@ -280,20 +223,6 @@ class AppController:
             error_message = str(e)
             self.main_window.update_status(f"Error changing language: {error_message}")
             self.logger.error(f"Error changing language: {error_message}")
-
-    def play_audio(self, file_path):
-        """Play audio from the given file path"""
-        self.logger.info(f"Playing audio from {file_path}")
-
-        # Start playback in a thread
-        self.play_thread = threading.Thread(
-            target=self._run_playback, args=(file_path,)
-        )
-        self.play_thread.daemon = True
-        self.play_thread.start()
-
-        # Update status
-        self.main_window.update_status(f"Playing audio from {file_path}")
 
     def on_update_status(self, message, log_message=None):
         """Update the status display."""
@@ -319,6 +248,12 @@ class AppController:
         else:
             self.logger.error(log_message)
 
+    def on_simulation_ended(self):
+        self.main_window.recording_panel.update_for_state(
+            self.audio_processor.get_state()
+        )
+
+    # TODO: Check if everything is good here
     def cleanup(self):
         """Clean up all resources and threads"""
         self.logger.info("Cleaning up resources")
