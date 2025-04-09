@@ -40,7 +40,9 @@ def main():
     transcription_service = TranscriptionService(events=events)
 
     # Create UI
-    main_window = MainWindow(root)  # audio_processor, transcription_service)
+    main_window = MainWindow(
+        root, state_manager
+    )  # audio_processor, transcription_service)
 
     # Create performance monitor
     # perf_monitor = PerformanceMonitor(main_window.performance_frame)

@@ -1,7 +1,5 @@
 import logging
-import threading
 import queue
-import time
 from utils.logging_setup import logger
 
 
@@ -23,6 +21,8 @@ class AppController:
 
         # Communication queue
         self.audio_queue = queue.Queue()
+        self.volume_queue = queue.Queue()
+        self.audio_processor.volume_queue = self.volume_queue
 
         # Initialize main_window panels:
         self.main_window.initialize_panels(self)
@@ -31,14 +31,19 @@ class AppController:
         self.events.on("error", self.on_error)
         self.events.on("update_transcription", self.on_update_transcription)
         self.events.on("simulation_ended", self.on_simulation_ended)
+        self.events.on("update_performance_metrics", self.on_update_performance_metrics)
 
         # Connect UI events to controller methods
         # self._connect_signals()
         self.logger.info("AppController initialized")
 
+    @property
+    def state_manager(self):
+        return self.audio_processor.state_manager
+
     def toggle_recording(self):
         """Start or stop recording based on current state"""
-        if not self.audio_processor.state_manager.is_recording():
+        if not self.state_manager.is_recording():
             self.start_recording()
         else:
             self.stop_recording()
@@ -52,9 +57,10 @@ class AppController:
         self.audio_processor.start_recording(self.audio_queue)
 
         # Update UI
-        self.main_window.recording_panel.update_for_state(
-            self.audio_processor.get_state()
-        )
+        self.main_window.update_for_state(self.audio_processor.get_state())
+
+        # Start volume monitoring
+        self.main_window.transcript_panel.start_volume_monitoring()
 
         # Start transcribing audio
         # TODO: end implementation
@@ -84,7 +90,7 @@ class AppController:
         self.audio_processor.toggle_pause()
 
         # Update UI
-        if self.audio_processor.state_manager.is_paused():
+        if self.state_manager.is_paused():
             self.main_window.update_status("Recording paused.")
         else:
             self.main_window.update_status("Recording resumed.")
@@ -117,7 +123,7 @@ class AppController:
 
         # def process_audio(self):
         """Process audio chunks from the queue and update transcription"""
-        while self.audio_processor.state_manager.is_recording():
+        while self.state_manager.is_recording():
             try:
                 data = self.audio_queue.get(timeout=0.5)
 
@@ -137,7 +143,7 @@ class AppController:
 
     def toggle_simulation(self):
         """Simulate recording from a file"""
-        if not self.audio_processor.state_manager.is_simulating():
+        if not self.state_manager.is_simulating():
             # Get file path from UI
             file_path = self.main_window.show_open_dialog()
 
@@ -164,7 +170,7 @@ class AppController:
     # TODO: Refine it and move what is needed to the audio_processor
     def toggle_play_audio(self):
         """Play audio from a file"""
-        if not self.audio_processor.state_manager.is_playing():
+        if not self.state_manager.is_playing():
             # Get file path from UI
             file_path = self.main_window.show_open_dialog()
 
@@ -175,9 +181,7 @@ class AppController:
             self.stopped = False
 
             # Update UI
-            self.main_window.recording_panel.update_for_state(
-                self.audio_processor.get_state()
-            )
+            self.main_window.update_for_state(self.audio_processor.get_state())
 
             self.events.emit("update_status", f"Playing audio from {file_path}")
 
@@ -188,9 +192,7 @@ class AppController:
         else:
             # Stop playback
             self.stopped = self.audio_processor.stop_playback()
-            self.main_window.recording_panel.update_for_state(
-                self.audio_processor.get_state()
-            )
+            self.main_window.update_for_state(self.audio_processor.get_state())
 
     def on_playback_complete(self, file_path):
         """Callback to handle when playback finishes"""
@@ -204,9 +206,7 @@ class AppController:
                 )
                 # self.main_window.update_status(f"Finished playing audio from {file_path}")
 
-            self.main_window.recording_panel.update_for_state(
-                self.audio_processor.get_state()
-            )
+            self.main_window.update_for_state(self.audio_processor.get_state())
 
         # Use a thread-safe way to update the UI (depends on framework: tkinter, Qt, etc.)
         self.main_window.run_on_ui_thread(update_ui)
@@ -259,13 +259,13 @@ class AppController:
         self.logger.info("Cleaning up resources")
 
         # Stop any ongoing processes
-        if self.audio_processor.state_manager.is_recording():
+        if self.state_manager.is_recording():
             self.stop_recording()
 
-        if self.audio_processor.state_manager.is_playing():
+        if self.state_manager.is_playing():
             self.audio_processor.stop_playback()
 
-        if self.audio_processor.state_manager.is_simulating():
+        if self.state_manager.is_simulating():
             self.audio_processor.stop_simulation()
 
         # Wait for threads to finish
@@ -293,7 +293,18 @@ class AppController:
         self.logger.info("Cleanup complete")
 
     def _get_state(self):
-        return self.audio_processor.state_manager.get_state()
+        return self.state_manager.get_state()
 
     def get_volume(self):
+        vol_level = self.audio_processor.get_volume_level()
+        if vol_level is None:
+            return None
         return self.audio_processor.get_volume_level()
+
+    def get_performance_metrics(self):
+        """Get performance metrics from the audio processor."""
+        return self.transcription_service.get_performance_metrics()
+
+    def on_update_performance_metrics(self, metrics):
+        """Update the performance metrics display."""
+        self.main_window.update_performance_metrics(metrics)

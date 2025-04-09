@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import time
 from utils.logging_setup import logger
+from models.app_state import AppState
 
 
 class TranscriptPanel:
@@ -13,6 +14,9 @@ class TranscriptPanel:
         """
         self.controller = controller
         self.logger = logger
+
+        # Define parent window
+        self.state_manager = self.controller.state_manager
 
         # Create bottom frame for status and transcript
         bottom_frame = ctk.CTkFrame(parent, fg_color="#e0e0e0", corner_radius=0)
@@ -184,23 +188,6 @@ class TranscriptPanel:
         self.transcript_text.see("end")  # Auto-scroll
         self.logger.debug(f"Transcript appended: {text}")
 
-    def update_performance_metrics(self, metrics):
-        """Update the performance monitor display.
-
-        Args:
-            metrics (dict): Dictionary containing performance metrics
-        """
-        # Format metrics for display
-        api_rate = metrics.get("api_rate", 0)
-        avg_api_time = metrics.get("avg_api_time", 0)
-        frame_rate = metrics.get("frame_rate", 0)
-
-        perf_info = f"API calls/sec: {api_rate:.1f} | Avg API time: {avg_api_time:.1f}ms | Frames/sec: {frame_rate:.1f}"
-
-        # Update display
-        self.perf_text.delete("0.0", "end")
-        self.perf_text.insert("0.0", perf_info)
-
     def update_volume_meter(self, volume_level):
         """Update the volume meter display.
 
@@ -216,13 +203,149 @@ class TranscriptPanel:
         # Update volume level label
         self.volume_level_label.configure(text=f"{volume_level:.1f} dB")
 
-    def update_ui(self):
-        """Fetch and update the volume bar."""
-        logger.debug("Updating UI")
+    def start_volume_monitoring(self):
+        """Start periodic volume level updates"""
+        self.is_monitoring_volume = True
+        self.update_volume_display()
+
+    def stop_volume_monitoring(self):
+        """Stop volume level updates"""
+        self.is_monitoring_volume = False
+
+    def update_volume_display(self):
+        """Update volume display and schedule next update"""
+        # Only proceed if monitoring is active
+        if not getattr(self, "is_monitoring_volume", True):
+            return
+
         volume = self.controller.get_volume()
         if volume is not None:
-            normalized_volume = min(
-                max((volume + 60) / 60, 0), 1
-            )  # Normalize dBFS (-60 dB to 0 dB) to [0,1]
+            normalized_volume = min(max((volume + 60) / 60, 0), 1)
             self.volume_progress.set(normalized_volume)
-        self.after(100, self.update_ui)  # Repeat every 100ms
+            self.volume_level_label.configure(text=f"{volume:.1f} dB")
+
+        # Schedule next update
+        self.root = self.status_text.winfo_toplevel()
+        self.root.after(100, self.update_volume_display)
+
+    def update_for_state(self, state):
+        """Update UI components based on application state."""
+        if state == AppState.RECORDING:
+            self.start_volume_monitoring()
+            self.start_perf_monitor()
+        else:
+            self.stop_volume_monitoring()
+            self.stop_perf_monitor()
+
+    def start_perf_monitor(self):
+        self.is_monitoring_perf = True
+        self.perf_update_interval = 1000  # Update every seconds
+        # self.perf_stats = {
+        #     "api_call_time": 0,
+        #     "api_total_time": 0,
+        #     "frames_processed": 0,
+        #     "ui_updates": 0,
+        # }
+        # self.update_perf_monitor()
+        self.update_performance_metrics_ui(self.controller.get_performance_metrics())
+
+    def update_perf_monitor(self):
+        if self.is_monitoring_perf:
+            # Update performance stats
+            self.perf_stats = self.controller.get_performance_metrics()
+
+            # Calculate rates
+            # TODO: fix this
+            api_rate = (
+                self.perf_stats["api_call_time"]
+                if self.state_manager.is_recording()
+                else 0
+            )
+            frame_rate = (
+                self.perf_stats["frames_processed"]
+                if self.state_manager.is_recording()
+                else 0
+            )
+            avg_api_time = (
+                (self.perf_stats["api_total_time"] / self.perf_stats["ui_updates"])
+                * 1000
+                if self.perf_stats["ui_updates"] > 0  # TODO: fix this
+                else 0
+            )
+
+            # Update display
+            perf_info = f"API calls/sec: {api_rate:.1f} | Avg API time: {avg_api_time:.1f}ms | Frames/sec: {frame_rate:.1f}"
+            self.perf_text.delete("0.0", "end")
+            self.perf_text.insert("0.0", perf_info)
+
+        # Schedule next update
+        self.root.after(self.perf_update_interval, self.update_perf_monitor)
+
+    def stop_perf_monitor(self):
+        """Stop volume level updates"""
+        self.is_monitoring_perf = False
+
+    # def update_performance_metrics(self, metrics):
+    #     """Update performance metrics display.
+
+    #     Args:
+    #         metrics (dict): Dictionary containing performance metrics
+    #     """
+    #     logger.debug("Updating performance metrics!!!!!!!")
+    #     if self.is_monitoring_perf:
+    #         perf_info = ""
+    #         for i, (key, value) in enumerate(metrics.items()):
+    #             if isinstance(value, float):
+    #                 value = round(value, 2)
+    #             elif isinstance(value, list):
+    #                 value = value[-1]
+    #             else:
+    #                 pass
+
+    #             if key.endswith("time"):
+    #                 value = str(value) + " s"
+
+    #             if i % 2 == 0:
+    #                 perf_info += f"{key}: {value} \t\t "
+    #             else:
+    #                 perf_info += f"{key}: {value} \n "
+
+    #         self.perf_text.delete("0.0", "end")
+    #         self.perf_text.insert("0.0", perf_info)
+
+    def update_performance_metrics_ui(self, metrics):
+        """Update performance metrics display.
+
+        Args:
+            metrics (dict): Dictionary containing performance metrics
+        """
+        if self.is_monitoring_perf:
+            lines = []
+            selected_items = []  # list(metrics.items())
+
+            # Preprocess values
+            for i, (key, value) in enumerate(metrics.items()):
+                if isinstance(value, float):
+                    value = round(value, 2)
+                elif isinstance(value, list):
+                    continue
+
+                if key.endswith("time"):
+                    value = f"{value} s"
+
+                selected_items.append(
+                    (key, str(value))
+                )  # Ensure all values are strings
+
+            # Format in pairs of 2 per line
+            for i in range(0, len(selected_items), 2):
+                left = f"{selected_items[i][0]:<20}: {selected_items[i][1]:<20}"
+                right = ""
+                if i + 1 < len(selected_items):
+                    right = f"{selected_items[i + 1][0]:<20}: {selected_items[i + 1][1]:<20}"
+                lines.append(left + "   " + right)
+
+            # Join and display
+            perf_info = "\n".join(lines)
+            self.perf_text.delete("0.0", "end")
+            self.perf_text.insert("0.0", perf_info)

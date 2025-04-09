@@ -41,14 +41,6 @@ class AudioProcessor:
             1024  # int(AUDIO_CONFIG["recording_chunk_size"] * self.rate)
         )
 
-        # Initialize PyAudio
-        # p = pyaudio.PyAudio()
-        # for i in range(p.get_device_count()):
-        #    dev = p.get_device_info_by_index(i)
-        #    logger.warning(
-        #        f"Device {i}: {dev['name']} (Input: {dev['maxInputChannels']})"
-        #    )
-        # p.terminate()
         self.audio = pyaudio.PyAudio()
         self.stream = None
 
@@ -58,9 +50,12 @@ class AudioProcessor:
 
         # Thread management
         self.record_thread = None
-        self.audio_queue = None  # queue.Queue()
-        # self.volume_queue = queue.Queue(maxsize=10)  # Queue for volume updates
+        self.audio_queue = None
         self.stop_event = threading.Event()
+
+        self.volume_queue = (
+            None  # Queue for volume updates must be set in the controller
+        )
 
         logger.debug("AudioProcessor initialized")
         logger.debug(f"Recording format: {self.format}")
@@ -190,17 +185,18 @@ class AudioProcessor:
             logger.warning("Audio queue is full. Dropping frame.")
 
         # # Update performance monitor
-        # if self.performance_monitor:
-        #     self.performance_monitor.record_frame_processed()
+        if self.performance_monitor:
+            self.performance_monitor.record_frame_processed()
 
         # # Calculate volume and send to volume queue
-        # audio_array = np.frombuffer(data, dtype=np.int16)
-        # volume = self.calculate_volume_in_decibels(audio_array)
-        # try:
-        #     logger.debug(f"Volume: {volume}")
-        #     self.volume_queue.put_nowait(volume)
-        # except queue.Full:
-        #     pass  # Drop old volume data if queue is full to keep it responsive
+        audio_array = np.frombuffer(data, dtype=np.int16)
+        volume = self.calculate_volume_in_decibels(audio_array)
+        try:
+            self.volume_queue.put_nowait(volume)
+        except queue.Full:
+            # old_volume = self.volume_queue.get_nowait()
+            self.volume_queue.put(volume)
+            # Drop old volume data if queue is full to keep it responsive
 
     def get_next_audio_chunk(self, timeout=0.5):
         """
@@ -278,6 +274,7 @@ class AudioProcessor:
                 channels=wf.getnchannels(),
                 rate=wf.getframerate(),
                 output=True,
+                frames_per_buffer=self.recording_chunk,
             )
 
             # Read and play chunks
@@ -534,14 +531,16 @@ class AudioProcessor:
         if rms == 0:
             return -np.inf  # Silence should be -∞ dBFS
 
+        # logger.debug(f"RMS: {rms}, Max Value: {max_value}")
         return 20 * np.log10(rms / max_value)  # Normalize to full scalers
 
     def get_volume_level(self):
         """Fetch the latest volume level for UI updates."""
         try:
-            logger.debug(f"Fetching volume level {self.volume_queue.get_nowait()}")
+            # logger.debug(f"Fetching volume level {self.volume_queue.get_nowait()}")
             return self.volume_queue.get_nowait()
         except queue.Empty:
+            # logger.debug("Volume queue is empty")
             return None
 
     def plot_data(self):

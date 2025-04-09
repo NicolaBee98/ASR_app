@@ -12,7 +12,9 @@ class EventEmitter:
         self.listeners[event_name].append(callback)
 
     def emit(self, event_name, *args, **kwargs):
-        self.logger.debug(f"Emitting event {event_name}")
+        avoid_list = ["update_performance_metrics"]
+        if event_name not in avoid_list:
+            self.logger.debug(f"Emitting event {event_name}")
         if event_name in self.listeners:
             for callback in self.listeners[event_name]:
                 callback(*args, **kwargs)

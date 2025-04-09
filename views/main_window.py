@@ -9,7 +9,7 @@ from utils.logging_setup import logger
 
 
 class MainWindow:
-    def __init__(self, root):  # audio_processor, transcription_service)
+    def __init__(self, root, state_manager):  # audio_processor, transcription_service)
         """Initialize the main application window.
 
         Args:
@@ -31,6 +31,9 @@ class MainWindow:
         self.root.grid_columnconfigure(0, weight=1)
         self.root.grid_rowconfigure(0, weight=1)
 
+        # Set app_state
+        self.state_manager = state_manager
+
         # Create main frame
         self.main_frame = ctk.CTkFrame(self.root, fg_color="#e0e0e0", corner_radius=0)
         self.main_frame.grid(row=0, column=0, sticky="nsew")
@@ -44,8 +47,6 @@ class MainWindow:
         # Create panels (will be initialized with controller later)
         self.recording_panel = None
         self.transcript_panel = None
-        # self.recording_panel = RecordingPanel(self.main_frame, self.controller)
-        # self.transcript_panel = TranscriptPanel(self.main_frame, self.controller)
 
         # Set up closing protocol
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
@@ -137,3 +138,12 @@ class MainWindow:
     def run_on_ui_thread(self, func, *args, **kwargs):
         """Run a function on the UI thread"""
         self.root.after(0, func, *args, **kwargs)
+
+    def update_for_state(self, state):
+        """Update UI components based on application state."""
+        self.recording_panel.update_for_state(state)
+        self.transcript_panel.update_for_state(state)
+
+    def update_performance_metrics(self, metrics):
+        """Update performance metrics display."""
+        self.transcript_panel.update_performance_metrics_ui(metrics)
