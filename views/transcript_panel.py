@@ -30,11 +30,8 @@ class TranscriptPanel:
         # Create transcript section
         self._create_transcript_section(bottom_frame)
 
-        # Create performance monitor
+        # Create performance monitor - taller now
         self._create_performance_monitor(bottom_frame)
-
-        # Create volume meter
-        self._create_volume_meter(bottom_frame)
 
         self.logger.debug("Transcript panel initialized")
 
@@ -91,7 +88,7 @@ class TranscriptPanel:
         self.transcript_text.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="nsew")
 
     def _create_performance_monitor(self, parent):
-        """Create the performance monitor section."""
+        """Create the performance monitor section with increased height."""
         perf_frame = ctk.CTkFrame(parent, fg_color="#d9d9d9", corner_radius=4)
         perf_frame.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=5, pady=5)
         perf_frame.grid_columnconfigure((0, 1), weight=1)
@@ -102,48 +99,16 @@ class TranscriptPanel:
             font=ctk.CTkFont(family="Arial", size=14, weight="bold"),
         ).grid(row=0, column=0, padx=5, pady=5)
 
+        # Increased height from 50 to 120
         self.perf_text = ctk.CTkTextbox(
             perf_frame,
-            height=50,
+            height=120,
             font=ctk.CTkFont(family="Courier", size=10),
             fg_color="#FFFFFF",
         )
         self.perf_text.grid(
             row=1, column=0, columnspan=2, padx=10, pady=5, sticky="nsew"
         )
-
-    def _create_volume_meter(self, parent):
-        """Create the volume meter section."""
-        volume_frame = ctk.CTkFrame(parent, fg_color="#d9d9d9", corner_radius=4)
-        volume_frame.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=5, pady=5)
-        volume_frame.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(
-            volume_frame,
-            text="Volume",
-            font=ctk.CTkFont(family="Arial", size=14, weight="bold"),
-        ).grid(row=0, column=0, padx=5, pady=5)
-
-        # Volume level label
-        self.volume_level_label = ctk.CTkLabel(
-            volume_frame,
-            text="0.0 dB",
-            font=ctk.CTkFont(family="Courier", size=10),
-            width=60,
-        )
-        self.volume_level_label.grid(row=1, column=0, padx=(10, 5), pady=5)
-
-        # Volume progress bar
-        self.volume_progress = ctk.CTkProgressBar(
-            volume_frame,
-            orientation="horizontal",
-            width=300,
-            height=20,
-            fg_color="#E0E0E0",
-            progress_color="#4CAF50",  # Green color indicating volume level
-        )
-        self.volume_progress.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
-        self.volume_progress.set(0)  # Initial value at 0
 
     def update_status(self, message):
         """Update the status display.
@@ -169,15 +134,6 @@ class TranscriptPanel:
         self.transcript_text.insert("end", " " + text)
         self.transcript_text.see("end")
 
-        # # Only update if text changed substantially
-        # if (
-        #     len(text) - len(current_text) > 10
-        #     or abs(len(text) - len(current_text)) > 20
-        # ):
-        #     self.transcript_text.delete("0.0", "end")
-        #     self.transcript_text.insert("0.0", text)
-        #     # self.logger.debug(f"Transcript window updated: {text}")
-
     def append_transcript(self, text):
         """Append new transcribed text.
 
@@ -188,65 +144,16 @@ class TranscriptPanel:
         self.transcript_text.see("end")  # Auto-scroll
         self.logger.debug(f"Transcript appended: {text}")
 
-    def update_volume_meter(self, volume_level):
-        """Update the volume meter display.
-
-        Args:
-            volume_level (float): Current volume level in decibels
-        """
-        # Normalize volume level for progress bar (assuming typical range of -60 to 0 dB)
-        normalized_volume = max(0, min(1, (volume_level + 60) / 60))
-
-        # Update progress bar
-        self.volume_progress.set(normalized_volume)
-
-        # Update volume level label
-        self.volume_level_label.configure(text=f"{volume_level:.1f} dB")
-
-    def start_volume_monitoring(self):
-        """Start periodic volume level updates"""
-        self.is_monitoring_volume = True
-        self.update_volume_display()
-
-    def stop_volume_monitoring(self):
-        """Stop volume level updates"""
-        self.is_monitoring_volume = False
-
-    def update_volume_display(self):
-        """Update volume display and schedule next update"""
-        # Only proceed if monitoring is active
-        if not getattr(self, "is_monitoring_volume", True):
-            return
-
-        volume = self.controller.get_volume()
-        if volume is not None:
-            normalized_volume = min(max((volume + 60) / 60, 0), 1)
-            self.volume_progress.set(normalized_volume)
-            self.volume_level_label.configure(text=f"{volume:.1f} dB")
-
-        # Schedule next update
-        self.root = self.status_text.winfo_toplevel()
-        self.root.after(100, self.update_volume_display)
-
     def update_for_state(self, state):
         """Update UI components based on application state."""
         if state == AppState.RECORDING:
-            self.start_volume_monitoring()
             self.start_perf_monitor()
         else:
-            self.stop_volume_monitoring()
             self.stop_perf_monitor()
 
     def start_perf_monitor(self):
         self.is_monitoring_perf = True
         self.perf_update_interval = 1000  # Update every seconds
-        # self.perf_stats = {
-        #     "api_call_time": 0,
-        #     "api_total_time": 0,
-        #     "frames_processed": 0,
-        #     "ui_updates": 0,
-        # }
-        # self.update_perf_monitor()
         self.update_performance_metrics_ui(self.controller.get_performance_metrics())
 
     def update_perf_monitor(self):
@@ -284,34 +191,6 @@ class TranscriptPanel:
     def stop_perf_monitor(self):
         """Stop volume level updates"""
         self.is_monitoring_perf = False
-
-    # def update_performance_metrics(self, metrics):
-    #     """Update performance metrics display.
-
-    #     Args:
-    #         metrics (dict): Dictionary containing performance metrics
-    #     """
-    #     logger.debug("Updating performance metrics!!!!!!!")
-    #     if self.is_monitoring_perf:
-    #         perf_info = ""
-    #         for i, (key, value) in enumerate(metrics.items()):
-    #             if isinstance(value, float):
-    #                 value = round(value, 2)
-    #             elif isinstance(value, list):
-    #                 value = value[-1]
-    #             else:
-    #                 pass
-
-    #             if key.endswith("time"):
-    #                 value = str(value) + " s"
-
-    #             if i % 2 == 0:
-    #                 perf_info += f"{key}: {value} \t\t "
-    #             else:
-    #                 perf_info += f"{key}: {value} \n "
-
-    #         self.perf_text.delete("0.0", "end")
-    #         self.perf_text.insert("0.0", perf_info)
 
     def update_performance_metrics_ui(self, metrics):
         """Update performance metrics display.

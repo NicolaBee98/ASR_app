@@ -38,7 +38,12 @@ class MainWindow:
         self.main_frame = ctk.CTkFrame(self.root, fg_color="#e0e0e0", corner_radius=0)
         self.main_frame.grid(row=0, column=0, sticky="nsew")
         self.main_frame.grid_columnconfigure(0, weight=1)
-        self.main_frame.grid_rowconfigure((1, 2, 3, 4), weight=1)
+
+        # Adjust row weights to give more space to performance monitor
+        self.main_frame.grid_rowconfigure(0, weight=0)  # Title - no expansion
+        self.main_frame.grid_rowconfigure(1, weight=2)  # Recording panel
+        self.main_frame.grid_rowconfigure(2, weight=1)  # Secondary controls
+        self.main_frame.grid_rowconfigure(4, weight=3)  # Status/transcript area
 
         # Create title
         self._create_title()
@@ -147,3 +152,7 @@ class MainWindow:
     def update_performance_metrics(self, metrics):
         """Update performance metrics display."""
         self.transcript_panel.update_performance_metrics_ui(metrics)
+
+    def update_volume_meter(self, volume_level):
+        """Update the volume meter in the recording panel."""
+        self.recording_panel.update_volume_meter(volume_level)

@@ -6,21 +6,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 # import logging
 import customtkinter as ctk
 from utils.logging_setup import setup_logging
-from utils.config import (
-    UI_CONFIG,
-    AUDIO_CONFIG,
-    DEFAULT_RECORDING_PATH,
-    LOG_FILE_PATH,
-    ASR_CONFIG,
-    LANGUAGES,
-    COLORS,
-)
 from models.app_state import StateManager
 from models.audio_processor import AudioProcessor
 from models.transcription_service import TranscriptionService
 from views.main_window import MainWindow
 from controllers.app_controller import AppController
-from utils.performance_monitor import PerformanceMonitor
+
+# from utils.performance_monitor import PerformanceMonitor
 from utils.event_emitter import EventEmitter
 
 
@@ -52,6 +44,9 @@ def main():
         main_window, audio_processor, transcription_service, events
     )
     # main_window.initialize_panels(controller)
+
+    if False:  # Make VSCode happy
+        print(controller)
 
     # Setup clean exit
     def on_closing():

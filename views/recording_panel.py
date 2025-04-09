@@ -15,22 +15,6 @@ class RecordingPanel:
 
         self.controller = controller
 
-        # # Initialize callbacks
-        # self._record_callback = None
-        # self._pause_callback = None
-        # self._save_callback = None
-        # self._simulate_callback = None
-        # self._play_callback = None
-        # self._language_callback = None
-
-        # if controller:
-        #     self._record_callback = controller.toggle_recording
-        #     self._pause_callback = controller.toggle_pause
-        #     self._save_callback = controller.save_recording
-        #     self._simulate_callback = controller.simulate_recording
-        #     self._play_callback = controller.play_audio
-        #     self._language_callback = controller.change_language
-
         # Create recording controls panel
         self.panel = ctk.CTkFrame(
             parent,
@@ -41,7 +25,7 @@ class RecordingPanel:
         )
         self.panel.grid(row=1, column=0, sticky="nsew", padx=20, pady=10)
         self.panel.grid_columnconfigure((0, 1, 2), weight=1)
-        self.panel.grid_rowconfigure((0, 1), weight=1)
+        self.panel.grid_rowconfigure((0, 1, 2), weight=1)  # Added row 2 for volume
 
         # Button styling
         self.button_height = 36
@@ -53,11 +37,11 @@ class RecordingPanel:
         self._create_save_button()
         self._create_timer()
 
+        # Create volume meter in recording panel
+        self._create_volume_meter(self.panel)
+
         # Create secondary controls
         self._create_secondary_panel(parent)
-
-        # Create language selection
-        self._create_language_panel(parent)
 
         logger.info("Recording panel initialized")
 
@@ -126,12 +110,47 @@ class RecordingPanel:
 
         self.is_paused = False
 
+    def _create_volume_meter(self, parent):
+        """Create the volume meter section."""
+        volume_frame = ctk.CTkFrame(parent, fg_color="#d9d9d9", corner_radius=4)
+        volume_frame.grid(row=2, column=0, columnspan=3, sticky="nsew", padx=5, pady=5)
+        volume_frame.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            volume_frame,
+            text="Volume",
+            font=ctk.CTkFont(family="Arial", size=14, weight="bold"),
+        ).grid(row=0, column=0, padx=5, pady=5)
+
+        # Volume level label
+        self.volume_level_label = ctk.CTkLabel(
+            volume_frame,
+            text="0.0 dB",
+            font=ctk.CTkFont(family="Courier", size=10),
+            width=60,
+        )
+        self.volume_level_label.grid(row=1, column=0, padx=(10, 5), pady=5)
+
+        # Volume progress bar
+        self.volume_progress = ctk.CTkProgressBar(
+            volume_frame,
+            orientation="horizontal",
+            width=300,
+            height=20,
+            fg_color="#E0E0E0",
+            progress_color="#4CAF50",  # Green color indicating volume level
+        )
+        self.volume_progress.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
+        self.volume_progress.set(0)  # Initial value at 0
+
     def _create_secondary_panel(self, parent):
-        """Create the secondary control panel (simulate and play buttons)."""
+        """Create the secondary control panel (simulate and play buttons with language selector)."""
 
         secondary_panel = ctk.CTkFrame(parent, fg_color="#d9d9d9", corner_radius=8)
         secondary_panel.grid(row=2, column=0, sticky="nsew", padx=20, pady=10)
-        secondary_panel.grid_columnconfigure((0, 1), weight=1)
+        secondary_panel.grid_columnconfigure(
+            (0, 1, 2), weight=1
+        )  # Added column for language selector
         secondary_panel.grid_rowconfigure(0, weight=1)
 
         # Simulate button
@@ -166,18 +185,14 @@ class RecordingPanel:
         )
         self.play_button.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
 
-    def _create_language_panel(self, parent):
-        """Create the language selection panel."""
-        language_panel = ctk.CTkFrame(parent, fg_color="#d9d9d9", corner_radius=8)
-        language_panel.grid(row=3, column=0, sticky="nsew", padx=20, pady=10)
-        language_panel.grid_columnconfigure(0, weight=1)
-        language_panel.grid_rowconfigure(0, weight=1)
+        # Language dropdown next to play button
+        self._create_language_selector(secondary_panel)
 
+    def _create_language_selector(self, parent):
+        """Create the language selection widget."""
         # Language frame
-        language_frame = ctk.CTkFrame(
-            language_panel, fg_color="#d9d9d9", corner_radius=0
-        )
-        language_frame.grid(row=0, column=0, padx=10, pady=10)
+        language_frame = ctk.CTkFrame(parent, fg_color="#d9d9d9", corner_radius=0)
+        language_frame.grid(row=0, column=2, padx=10, pady=10, sticky="nsew")
         language_frame.grid_columnconfigure(0, weight=1)
         language_frame.grid_rowconfigure((0, 1), weight=1)
 
@@ -282,6 +297,47 @@ class RecordingPanel:
                 hover_color="#8B0000",
                 border_color="#8B0000",
             )
+
+    # Volume related methods
+    def start_volume_monitoring(self):
+        """Start periodic volume level updates"""
+        self.is_monitoring_volume = True
+        self.update_volume_display()
+
+    def stop_volume_monitoring(self):
+        """Stop volume level updates"""
+        self.is_monitoring_volume = False
+
+    def update_volume_meter(self, volume_level):
+        """Update the volume meter display.
+
+        Args:
+            volume_level (float): Current volume level in decibels
+        """
+        # Normalize volume level for progress bar (assuming typical range of -60 to 0 dB)
+        normalized_volume = max(0, min(1, (volume_level + 60) / 60))
+
+        # Update progress bar
+        self.volume_progress.set(normalized_volume)
+
+        # Update volume level label
+        self.volume_level_label.configure(text=f"{volume_level:.1f} dB")
+
+    def update_volume_display(self):
+        """Update volume display and schedule next update"""
+        # Only proceed if monitoring is active
+        if not getattr(self, "is_monitoring_volume", True):
+            return
+
+        volume = self.controller.get_volume()
+        if volume is not None:
+            normalized_volume = min(max((volume + 60) / 60, 0), 1)
+            self.volume_progress.set(normalized_volume)
+            self.volume_level_label.configure(text=f"{volume:.1f} dB")
+
+        # Schedule next update
+        self.root = self.volume_progress.winfo_toplevel()
+        self.root.after(100, self.update_volume_display)
 
     # Timer functions
     def _start_timer(self):

@@ -1,6 +1,7 @@
 import logging
 import queue
 from utils.logging_setup import logger
+from utils.config import LANGUAGES
 
 
 class AppController:
@@ -60,7 +61,7 @@ class AppController:
         self.main_window.update_for_state(self.audio_processor.get_state())
 
         # Start volume monitoring
-        self.main_window.transcript_panel.start_volume_monitoring()
+        self.main_window.recording_panel.start_volume_monitoring()
 
         # Start transcribing audio
         # TODO: end implementation
@@ -211,14 +212,19 @@ class AppController:
         # Use a thread-safe way to update the UI (depends on framework: tkinter, Qt, etc.)
         self.main_window.run_on_ui_thread(update_ui)
 
-    def change_language(self, language_code, language_name):
+    def change_language(self, language_name, language_codes=LANGUAGES):
         """Change the transcription language"""
         try:
+            language_code = language_codes[language_name]
+            if not language_code:
+                logger.error(f"Language code for {language_name} not found")
             self.transcription_service.set_language(language_code)
-            self.main_window.update_status(
-                f"Language changed to {language_name} ({language_code})"
+            self.events.emit(
+                "update_status",
+                f"Language changed to {language_name} ({language_code})",
             )
             self.logger.info(f"Language changed to {language_name} ({language_code})")
+
         except Exception as e:
             error_message = str(e)
             self.main_window.update_status(f"Error changing language: {error_message}")
