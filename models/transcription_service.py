@@ -28,12 +28,6 @@ class TranscriptionService:
         # Initialize performance monitor
         self.performance_metrics = {
             "NO METRICS INITIALIZED": 0,
-            # "record_api_call": performance_monitor.record_api_call
-            # if performance_monitor
-            # else None,
-            # "record_ui_update": performance_monitor.record_ui_update
-            # if performance_monitor
-            # else None,
         }
 
         # Initialize ASR
@@ -106,65 +100,6 @@ class TranscriptionService:
         except Exception as e:
             logger.error(f"Error changing ASR language: {str(e)}")
             return False
-
-    # def process_audio_chunk(self, data):
-    #     """
-    #     Process a single audio chunk.
-    #     Args:
-    #         data: Raw audio data bytes
-    #     Returns:
-    #         Tuple of (is_final, stability, text) or None if no result
-    #     """
-    #     try:
-    #         # Convert bytes to numpy array
-    #         audio_array = np.frombuffer(data, dtype=np.int16)
-
-    #         # Process with ASR
-    #         start_time = time.time()
-
-    #         # Insert audio chunk
-    #         self.online.insert_audio_chunk(audio_array)
-
-    #         # Calculate processing time
-    #         processing_time = time.time() - start_time
-
-    #         # Update performance monitor
-    #         self.performance_metrics["api_call_time"] = processing_time
-
-    #         self.performance_metrics["api_total_time"] += processing_time
-
-    #         # Process audio
-    #         result = self.online.process_iter()
-
-    #         if result[0] is not None:
-    #             self.performance_metrics["frames_processed"] += 1
-    #             self.performance_metrics["ui_updates"] += 1
-
-    #         return result
-    #     except Exception as e:
-    #         self.events.emit("error", f"Processing error: {str(e)}")
-    #         # logger.error(f"Error processing audio chunk: {str(e)}")
-    #         return None
-
-    # def _transcription_thread(self, audio_processor):
-
-    #     while audio_processor.state_manager.is_recording():
-    #         try:
-    #             data = audio_processor.audio_queue.get(timeout=0.5)
-
-    #             # Process audio with transcription service
-    #             result = self.process_audio_chunk(data)
-
-    #             if result and result[0] is not None:
-    #                 transcript = result[2]
-    #                 self.events.emit("update_transcription", transcript)
-    #             logger.debug("Something was sent to API")
-
-    #         except queue.Empty:
-    #             pass
-    #         except Exception as e:
-    #             error_message = str(e)
-    #             self.events.emit("error", f"Processing error: {error_message}")
 
     def start_transcription(self, audio_processor):
         if not audio_processor.state_manager.is_recording():

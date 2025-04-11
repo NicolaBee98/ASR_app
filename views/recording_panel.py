@@ -116,20 +116,20 @@ class RecordingPanel:
         volume_frame.grid(row=2, column=0, columnspan=3, sticky="nsew", padx=5, pady=5)
         volume_frame.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(
-            volume_frame,
-            text="Volume",
-            font=ctk.CTkFont(family="Arial", size=14, weight="bold"),
-        ).grid(row=0, column=0, padx=5, pady=5)
+        # ctk.CTkLabel(
+        #     volume_frame,
+        #     text="Volume",
+        #     font=ctk.CTkFont(family="Arial", size=14, weight="bold"),
+        # ).grid(row=0, column=0, padx=5, pady=5)
 
         # Volume level label
         self.volume_level_label = ctk.CTkLabel(
             volume_frame,
-            text="0.0 dB",
+            text="Volume: 0.0 dB",
             font=ctk.CTkFont(family="Courier", size=10),
             width=60,
         )
-        self.volume_level_label.grid(row=1, column=0, padx=(10, 5), pady=5)
+        self.volume_level_label.grid(row=0, column=0, padx=(10, 5), pady=5)
 
         # Volume progress bar
         self.volume_progress = ctk.CTkProgressBar(
@@ -140,7 +140,7 @@ class RecordingPanel:
             fg_color="#E0E0E0",
             progress_color="#4CAF50",  # Green color indicating volume level
         )
-        self.volume_progress.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
+        self.volume_progress.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
         self.volume_progress.set(0)  # Initial value at 0
 
     def _create_secondary_panel(self, parent):
@@ -203,7 +203,7 @@ class RecordingPanel:
             font=ctk.CTkFont(family="Arial", size=14),
             text_color="#000000",
         )
-        language_label.grid(row=0, column=0, padx=5, pady=(0, 2))
+        language_label.grid(row=0, column=0, padx=5, pady=(0, 0))
 
         # Language dropdown
         self.language_var = ctk.StringVar(value="Auto")
@@ -223,7 +223,7 @@ class RecordingPanel:
             dropdown_text_color="#000000",
             text_color="#000000",
         )
-        self.language_dropdown.grid(row=1, column=0, padx=5, pady=(2, 0))
+        self.language_dropdown.grid(row=1, column=0, padx=5, pady=(0, 0))
 
     def update_timer(self, time_str):
         """Update the timer display.
@@ -321,7 +321,7 @@ class RecordingPanel:
         self.volume_progress.set(normalized_volume)
 
         # Update volume level label
-        self.volume_level_label.configure(text=f"{volume_level:.1f} dB")
+        self.volume_level_label.configure(text=f"Volume: {volume_level:.1f} dB")
 
     def update_volume_display(self):
         """Update volume display and schedule next update"""
