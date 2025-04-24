@@ -15,40 +15,42 @@ class RecordingPanel:
 
         self.controller = controller
 
-        # Create recording controls panel
-        self.panel = ctk.CTkFrame(
-            parent,
-            fg_color="#d9d9d9",
-            corner_radius=8,
-            border_width=2,
-            border_color="#999999",
-        )
-        self.panel.grid(row=1, column=0, sticky="nsew", padx=20, pady=10)
-        self.panel.grid_columnconfigure((0, 1, 2), weight=1)
-        self.panel.grid_rowconfigure((0, 1, 2), weight=1)  # Added row 2 for volume
-
         # Button styling
         self.button_height = 36
         self.button_font = ctk.CTkFont(family="Arial", size=16, weight="bold")
 
-        # Create recording controls
-        self._create_record_button()
-        self._create_pause_button()
-        self._create_save_button()
-        self._create_timer()
-
-        # Create volume meter in recording panel
-        self._create_volume_meter(self.panel)
+        # Create top frame for recording controls
+        self._create_first_panel(parent)
 
         # Create secondary controls
         self._create_secondary_panel(parent)
 
         logger.info("Recording panel initialized")
 
+    def _create_first_panel(self, parent):
+        """Create the top control panel."""
+        # Create recording controls panel
+        self.first_panel = ctk.CTkFrame(
+            parent,
+            fg_color="#d9d9d9",
+            corner_radius=8,
+            border_width=2,
+        )
+        self.first_panel.grid(row=1, column=0, sticky="nsew", padx=20, pady=10)
+        self.first_panel.grid_columnconfigure((0, 1, 2), weight=1)
+        self.first_panel.grid_rowconfigure((0, 1, 2), weight=1)
+
+        # Create recording controls
+        self._create_record_button()
+        self._create_pause_button()
+        self._create_save_button()
+        self._create_timer()
+        self._create_volume_meter(self.first_panel)
+
     def _create_record_button(self):
         """Create the record/stop button."""
         self.record_button = ctk.CTkButton(
-            self.panel,
+            self.first_panel,
             text="Record",
             command=self.controller.toggle_recording,
             fg_color="#4682B4",  # Steel Blue
@@ -65,7 +67,7 @@ class RecordingPanel:
     def _create_pause_button(self):
         """Create the pause/resume button."""
         self.pause_button = ctk.CTkButton(
-            self.panel,
+            self.first_panel,
             text="Pause",
             command=self.controller.toggle_pause,
             state="disabled",
@@ -83,7 +85,7 @@ class RecordingPanel:
     def _create_save_button(self):
         """Create the save button."""
         self.save_button = ctk.CTkButton(
-            self.panel,
+            self.first_panel,
             text="Save",
             command=self.controller.save_recording,
             state="disabled",
@@ -101,7 +103,7 @@ class RecordingPanel:
     def _create_timer(self):
         """Create the recording timer display."""
         self.timer_label = ctk.CTkLabel(
-            self.panel,
+            self.first_panel,
             text="00:00",
             font=ctk.CTkFont(family="Courier", size=36, weight="bold"),
             text_color="#0000CD",  # Medium Blue
@@ -151,7 +153,7 @@ class RecordingPanel:
         secondary_panel.grid_columnconfigure(
             (0, 1, 2), weight=1
         )  # Added column for language selector
-        secondary_panel.grid_rowconfigure(0, weight=1)
+        secondary_panel.grid_rowconfigure((0, 1), weight=1)
 
         # Simulate button
         self.simulate_button = ctk.CTkButton(
@@ -183,7 +185,21 @@ class RecordingPanel:
             font=self.button_font,
             text_color="#FFFFFF",
         )
-        self.play_button.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
+        self.play_button.grid(row=0, column=1, padx=10, pady=10)
+
+        self.with_playback_checkbox = ctk.CTkCheckBox(
+            secondary_panel,
+            text="Play while simulating",
+            onvalue=True,
+            offvalue=False,
+            command=self.controller.set_playback_while_simulating,
+            text_color="#000000",
+            corner_radius=1,
+            font=ctk.CTkFont(family="Arial", size=10, weight="bold"),
+            state="normal",
+        )
+        self.with_playback_checkbox.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+        self.with_playback_checkbox.select()
 
         # Language dropdown next to play button
         self._create_language_selector(secondary_panel)
@@ -377,4 +393,4 @@ class RecordingPanel:
         if self.timer_running:
             self.timer_seconds += 1
             self._update_timer_display()
-            self.panel.after(1000, self._schedule_timer_update)
+            self.first_panel.after(1000, self._schedule_timer_update)

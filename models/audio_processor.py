@@ -11,6 +11,7 @@ import queue
 from utils.logging_setup import logger
 from utils.config import AUDIO_CONFIG
 from models.app_state import AppState
+import traceback
 
 
 class AudioProcessor:
@@ -75,7 +76,9 @@ class AudioProcessor:
         self.start_time = time.time()
 
         # Start recording thread
-        self.record_thread = threading.Thread(target=self._record_audio_thread)
+        self.record_thread = threading.Thread(
+            target=self._record_audio_thread, daemon=True
+        )
         self.record_thread.daemon = True
         self.record_thread.start()
 
@@ -194,9 +197,7 @@ class AudioProcessor:
         try:
             self.volume_queue.put_nowait(volume)
         except queue.Full:
-            # old_volume = self.volume_queue.get_nowait()
             self.volume_queue.put(volume)
-            # Drop old volume data if queue is full to keep it responsive
 
     def get_next_audio_chunk(self, timeout=0.5):
         """
@@ -238,7 +239,7 @@ class AudioProcessor:
 
         # Start playback thread
         play_thread = threading.Thread(
-            target=self._play_audio_thread, args=(file_path, on_complete)
+            target=self._play_audio_thread, args=(file_path, on_complete), daemon=True
         )
         play_thread.daemon = True
         play_thread.start()
@@ -375,6 +376,55 @@ class AudioProcessor:
             self.events.emit("error", f"Error in audio processing: {str(e)}")
             raise e
 
+    # def _transcribe_audio_chunk(
+    #     self, audio_array, transcription_service, processing_queue=None
+    # ):
+    #     """Transcribe and print the current audio chunk"""
+
+    #     if getattr(transcription_service.api, "requires_separate_processing", False):
+    #         if processing_queue is not None:
+    #             processing_queue.put(audio_array)
+    #     else:
+    #         result = transcription_service.api.process_audio()
+    #         self._handle_transcription_result(result)
+
+    def api_require_separate_processing(self, transcription_service):
+        """Check if the transcription service requires separate processing."""
+        return getattr(transcription_service.api, "requires_separate_processing", False)
+
+    def _handle_transcription_result(self, result):
+        """Handle the transcription result and update the UI"""
+        logger.debug(f"Handling transcription result {result}")
+        if isinstance(result, (list, tuple)):
+            if result[0] is not None:
+                transcript = result[2]
+        elif isinstance(result, str):
+            transcript = result
+        else:
+            logger.error("Unexpected result format from transcription service")
+            return
+        if transcript:
+            self.events.emit("update_transcription", transcript)
+            if self.performance_monitor:
+                self.performance_monitor.record_ui_update()
+
+    def _transcription_results_thread(
+        self, transcription_service, processing_queue=None
+    ):
+        """Transcribe and print the current audio chunk"""
+        logger.debug("Processing thread started")
+        while self.state_manager.is_recording() or self.state_manager.is_simulating():
+            try:
+                # audio_chunk = processing_queue.get(timeout=1)
+                result = transcription_service.api.process_audio()
+                self._handle_transcription_result(result)
+            except queue.Empty:
+                continue
+            except Exception as e:
+                self.events.emit("error", f"Processing thread error: {str(e)}")
+                break
+        return
+
     def _simulate_audio_thread(self, file_path, transcription_service):
         """
         Simulate real-time audio streaming from a file.
@@ -384,17 +434,30 @@ class AudioProcessor:
             transcription_service: TranscriptionService instance to process audio
         """
         wf = None
+        process_thread = None
+        processing_queue = queue.Queue()
+
         try:
             # Load and preprocess audio file
-            file_path = self._audio_consistency_check(file_path)
+            # file_path = self._audio_consistency_check(
+            #     file_path
+            # )  # Is it needed? Already done in _play_audio_thread_during_simulation
 
-            # Open the WAV file for streaming
-            wf = wave.open(file_path, "rb")
+            wf = wave.open(file_path, "rb")  # Open the WAV file for streaming
             chunk_size = int(
                 self.rate * transcription_service.min_chunk
             )  # ASR processing chunk size
 
             self.events.emit("update_status", "Streaming simulated audio...")
+            # Start processing thread if needed
+            if self.api_require_separate_processing(transcription_service):
+                transcription_service.api.start()  # Start the API transcription service
+                process_thread = threading.Thread(
+                    target=self._transcription_results_thread,
+                    args=(transcription_service, processing_queue),
+                    daemon=True,
+                )
+                process_thread.start()
 
             # Simulation loop
             while self.state_manager.is_simulating():
@@ -404,33 +467,27 @@ class AudioProcessor:
 
                 # Convert bytes to NumPy array (int16)
                 audio_array = np.frombuffer(data, dtype=np.int16)
+                transcription_service.api.insert_audio_chunk(audio_array)
 
-                # Process audio with ASR
-                transcription_service.online.insert_audio_chunk(audio_array)
-                result = transcription_service.online.process_iter()
+                if self.api_require_separate_processing(transcription_service):
+                    # Queue the audio chunk for processing
+                    try:
+                        processing_queue.put(audio_array, timeout=1)
+                    except queue.Full:
+                        logger.warning("Processing queue is full. Dropping frame.")
+                else:
+                    # Process the audio chunk immediately
+                    result = transcription_service.api.process_audio()
+                    self._handle_transcription_result(result)
 
-                # If we have a transcript, send it to callback
-                if (
-                    result[0] is not None
-                ):  # and transcription_service.transcript_callback:
-                    transcript = result[2]
-                    self.events.emit("update_transcription", transcript)
-                    # transcription_service.transcript_callback(transcript)
-
-                    if self.performance_monitor:
-                        self.performance_monitor.record_ui_update()
-
-                    logger.debug(f"ASR Output: {transcript}")
-
-                # Simulate real-time delay
                 time.sleep(transcription_service.min_chunk)
 
             if self.state_manager.is_simulating():
                 self.events.emit("update_status", "Simulation completed.")
 
         except Exception as e:
-            error_message = str(e)
-            self.events.emit("error", f"Error in simulation: {error_message}")
+            self.events.emit("error", f"Error in simulation: {e}")
+            traceback.print_exc()
 
         finally:
             # Reset simulation state
@@ -441,12 +498,12 @@ class AudioProcessor:
 
             if wf:
                 wf.close()
-            if (
-                hasattr(self, "_simulate_audio_thread")
-                and self.simulate_audio_thread.is_alive()
-                and self.simulate_audio_thread is not threading.current_thread()
-            ):
-                self.simulate_audio_thread.join(timeout=0.5)
+
+            if hasattr(transcription_service.api, "stop"):
+                transcription_service.api.stop()
+
+            if process_thread and process_thread.is_alive():
+                process_thread.join(timeout=1.0)
 
     def start_simulation(self, file_path, transcription_service):
         """Prepare for audio simulation. Set state to simulating for updating UI"""
@@ -462,7 +519,7 @@ class AudioProcessor:
             )
             self.simulate_audio_thread.start()
         else:
-            logger.debug("Audio simulation is already running")
+            logger.warning("Audio simulation is already running")
 
     def stop_simulation(self):
         """Stop audio simulation."""
@@ -573,3 +630,74 @@ class AudioProcessor:
         # plt.title("Spectrogram")
         # plt.colorbar()
         # plt.show()
+
+    def start_simulation_with_playback(
+        self, file_path, transcription_service, on_complete=None
+    ):
+        """
+        Simulate real-time streaming while also playing back the audio file.
+
+        Args:
+            file_path: Path to the audio file
+            transcription_service: TranscriptionService instance to process audio
+            on_complete: Callback to call when playback completes
+        """
+        logger.debug("Starting audio simulation with playback")
+
+        # Make a consistent version of the audio file (same format, sample rate, etc.)
+        processed_file_path = self._audio_consistency_check(file_path)
+
+        self.start_simulation(processed_file_path, transcription_service)
+
+        # Start the playback thread
+        play_thread = threading.Thread(
+            target=self._play_audio_thread_during_simulation,
+            args=(processed_file_path, on_complete),
+            daemon=True,
+        )
+        play_thread.start()
+
+        return True
+
+    def _play_audio_thread_during_simulation(self, file_path, on_complete=None):
+        """
+        Background thread function for audio playback during simulation.
+        This variant doesn't change the application state.
+
+        Args:
+            file_path: Path to the audio file
+            on_complete: Callback to call when playback completes
+        """
+        try:
+            # Open the WAV file
+            wf = wave.open(file_path, "rb")
+
+            # Initialize playback stream
+            stream = self.audio.open(
+                format=self.audio.get_format_from_width(wf.getsampwidth()),
+                channels=wf.getnchannels(),
+                rate=wf.getframerate(),
+                output=True,
+                frames_per_buffer=self.recording_chunk,
+            )
+
+            # Read and play chunks
+            data = wf.readframes(self.recording_chunk)
+
+            while data and self.state_manager.is_simulating():
+                stream.write(data)
+                data = wf.readframes(self.recording_chunk)
+
+            # Clean up
+            stream.stop_stream()
+            stream.close()
+            wf.close()
+
+            # Call completion callback if provided
+            if on_complete:
+                on_complete()
+
+            logger.debug("Audio playback during simulation completed")
+
+        except Exception as e:
+            logger.error(f"Error in playback thread during simulation: {str(e)}")

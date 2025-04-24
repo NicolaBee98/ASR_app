@@ -28,14 +28,19 @@ DEFAULT_RECORDING_PATH = "recording.wav"
 LOG_FILE_PATH = {
     "ASR_app": "/home/nicola/Opportunity/ASR_app/test.log",
     "whisper_streaming": "/home/nicola/Opportunity/ASR_app/whisper_streaming.log",
+    "realtimestt": "/home/nicola/Opportunity/ASR_app/realtimestt.log",
 }
+
+# Transcription package selection
+TRANSCRIPTION_PACKAGE = "realtime_stt"  # Options: "whisper_streaming", "realtime_stt"
+
 
 # ASR Configuration that has to be passed to whisper_online.asr_factory
 ASR_CONFIG = {
     "start_at": 0,
     "offline": False,
     "comp_unaware": False,
-    "min_chunk_size": 5.0,  # Seconds of the chunk
+    "min_chunk_size": 2.0,  # Seconds of the chunk
     "model": "large-v2",
     "model_cache_dir": None,
     "model_dir": None,

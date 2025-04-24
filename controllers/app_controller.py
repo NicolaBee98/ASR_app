@@ -153,10 +153,17 @@ class AppController:
                     f"Simulating recording with file: {file_path}"
                 )
 
-                self.audio_processor.start_simulation(
-                    file_path, self.transcription_service
-                )
-                # Update UI
+                self.with_playback = True
+
+                if not self.with_playback:
+                    self.audio_processor.start_simulation(
+                        file_path, self.transcription_service
+                    )
+                else:
+                    self.audio_processor.start_simulation_with_playback(
+                        file_path, self.transcription_service
+                    )
+                    # Update UI
                 self.main_window.recording_panel.update_for_state(
                     self.audio_processor.get_state()
                 )
@@ -167,6 +174,13 @@ class AppController:
             self.main_window.recording_panel.update_for_state(
                 self.audio_processor.get_state()
             )
+
+    def set_playback_while_simulating(self):
+        """Set playback while simulating"""
+        self.with_playback = (
+            self.main_window.recording_panel.with_playback_checkbox.get()
+        )
+        logger.debug(f"Playback while simulating was set to {self.with_playback}")
 
     # TODO: Refine it and move what is needed to the audio_processor
     def toggle_play_audio(self):

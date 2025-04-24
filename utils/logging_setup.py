@@ -21,8 +21,8 @@ def setup_logging(logger_name="ASR_app"):
     logger.propagate = False
 
     # Remove existing handlers (to prevent duplicate logs)
-    if logger.hasHandlers():
-        logger.handlers.clear()
+    while logger.hasHandlers():
+        logger.removeHandler(logger.handlers[0])
 
     # Create file handlers
     file_handler = logging.FileHandler(log_file, mode="w")

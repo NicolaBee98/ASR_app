@@ -7,6 +7,7 @@ import queue
 from whisper_streaming.whisper_online import asr_factory
 from utils.logging_setup import logger
 from utils.config import ASR_CONFIG, ASRArgs, LOG_FILE_PATH
+from .api.api_backend_factory import api_backend_factory
 
 
 class TranscriptionService:
@@ -30,9 +31,10 @@ class TranscriptionService:
             "NO METRICS INITIALIZED": 0,
         }
 
-        # Initialize ASR
+        # Initialize ASR API
+        self.api = api_backend_factory()
         self.args = self._create_asr_args()
-        self.asr, self.online = self._initialize_asr()
+        # self.asr, self.online = self._initialize_asr()
 
         # Determine minimum chunk size
         if self.args.vac:
@@ -56,27 +58,26 @@ class TranscriptionService:
 
         return args
 
-    def _initialize_asr(self):
-        """
-        Initialize the ASR engine with whisper_online package
+    # def _initialize_asr(self):
+    #     """
+    #     Initialize the ASR engine with whisper_online package
 
-        Returns:
-            Tuple of (asr, online) objects
-        """
-        try:
-            # Create a logfile for ASR
-            logfile = open(LOG_FILE_PATH["whisper_streaming"], "a", buffering=1)
+    #     Returns:
+    #         Tuple of (asr, online) objects
+    #     """
+    #     try:
+    #         # Create a logfile for ASR
+    #         logfile = open(LOG_FILE_PATH["whisper_streaming"], "a", buffering=1)
 
-            # Initialize ASR
-            asr, online = asr_factory(self.args, logfile=logfile)
-            logger.info(f"ASR engine initialized with backend: {self.args.backend}")
-            return asr, online
+    #         # Initialize ASR
+    #         asr, online = asr_factory(self.args, logfile=logfile)
+    #         logger.info(f"ASR engine initialized with backend: {self.args.backend}")
+    #         return asr, online
 
-        except Exception as e:
-            logger.error(f"Error initializing ASR engine: {str(e)}")
-            raise
+    #     except Exception as e:
+    #         logger.error(f"Error initializing ASR engine: {str(e)}")
+    #         raise e
 
-    # TODO: fix this
     def set_language(self, language_code):
         """
         Change the ASR language.
@@ -87,19 +88,20 @@ class TranscriptionService:
         Returns:
             bool: Whether the language was changed successfully
         """
-        try:
-            # Update language in args
-            self.args.lan = language_code
+        self.api.set_language(language_code)
+        # try:
+        #     # Update language in args
+        #     self.args.lan = language_code
 
-            # Reinitialize ASR
-            self.asr, self.online = self._initialize_asr()
+        #     # Reinitialize ASR
+        #     self.asr, self.online = self._initialize_asr()
 
-            logger.info(f"ASR language changed to: {language_code}")
-            return True
+        #     logger.info(f"ASR language changed to: {language_code}")
+        #     return True
 
-        except Exception as e:
-            logger.error(f"Error changing ASR language: {str(e)}")
-            return False
+        # except Exception as e:
+        #     logger.error(f"Error changing ASR language: {str(e)}")
+        #     return False
 
     def start_transcription(self, audio_processor):
         if not audio_processor.state_manager.is_recording():
@@ -208,17 +210,13 @@ class TranscriptionService:
             )
 
             # Insert audio chunk
-            def insert_audio():
-                self.online.insert_audio_chunk(audio_array)
+            def insert_audio_chunk():
+                self.api.insert_audio_chunk(audio_array)
 
-            _, api_time = self.track_processing_time("api_call", insert_audio)
-
-            # Process audio
-            def process_audio():
-                return self.online.process_iter()
+            _, api_time = self.track_processing_time("api_call", insert_audio_chunk)
 
             result, process_time = self.track_processing_time(
-                "processing", process_audio
+                "processing", self.api.process_audio
             )
 
             if result[0] is not None:
